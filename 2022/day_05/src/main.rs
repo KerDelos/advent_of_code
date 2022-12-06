@@ -60,7 +60,7 @@ fn main() {
             let remaining = dock_9001[from].split_off(nb);
             let moving_crates = dock_9001[from].clone();
             dock_9001[from] = remaining;
-            moving_crates.iter().rev().for_each(|c| dock_9001[to].push_front(*c)); //for some reason if we put a map instal of a foreach here, it doesn't work 
+            moving_crates.iter().rev().for_each(|c| dock_9001[to].push_front(*c));
         }
 
         let solution_9000 = dock_9000.iter().map(|col| match col.front() { Some(c) => *c, None => ' '}).collect::<String>();
