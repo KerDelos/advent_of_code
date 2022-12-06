@@ -8,8 +8,7 @@ fn main() {
     .map(|v| v.0).unwrap() + 4;
 
     let start_of_message = content.chars().collect::<Vec<_>>().windows(14).enumerate()
-    .find(|v| v.1.iter().unique().count() == 14)
-    .map(|v| v.0).unwrap() + 14;
+    .find(|(_,chrs)| chrs.iter().unique().count() == 14).unwrap().0 + 14;
 
     println!("start-of-packet marker detected at char {}",start_of_packet);
     println!("start-of-message marker detected at char {}",start_of_message);
