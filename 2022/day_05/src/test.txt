@@ -1,0 +1,11 @@
+fn print_state(state: &Vec<VecDeque<char>>)
+{
+    let cl = (*state).clone();
+    for i in 0..cl.len() {
+        print!("{} ",i+1);
+        let cl2 = cl[i].clone();
+        for cr in cl2 {
+            print!("[{}] ", cr);
+        }
+    }
+}
