@@ -18,56 +18,36 @@ pub fn parse_alpha_to_string(input: &str) -> IResult<&str, String>
     map_res(alpha1, String::from_str)(input)
 }
 
-pub fn parse_filename(input: &str) -> IResult<&str, String>
-{
-    let complete_filename_parser = tuple((parse_alpha_to_string,char('.'),parse_alpha_to_string));
-
-    map_res(
-        complete_filename_parser,
-         |(name, sep, ext)| Ok::<String,Error>(format!("{}{}{}",name,sep,ext)) 
-        )(input)
-}
-
 #[derive(Debug, Eq, PartialEq)]
 pub enum FileSystemEntry{
-    File(FileEntry),
-    Folder(FolderEntry)
+    File { name: String, size: u32},
+    Folder { name: String, /*parent: Option<&FileSystemEntry>, children: Vec<FileSystemEntry>*/}
 }
 
 impl FileSystemEntry{
-    fn parse(input: &str) -> IResult<&str,Self>
+    pub fn parse_filename_with_extensions(input: &str) -> IResult<&str, String>
     {
-        let parse_file_entry = map(FileEntry::parse, |f| FileSystemEntry::File(f));
-        let parse_folder_entry = map(FolderEntry::parse, |f| FileSystemEntry::Folder(f));
-        alt((parse_file_entry,parse_folder_entry))(input)
+        map_res(
+            tuple((parse_alpha_to_string,char('.'),parse_alpha_to_string)),
+            |(name, sep, ext)| Ok::<String,Error>(format!("{}{}{}",name,sep,ext))
+            )(input)
     }
-}
 
-
-#[derive(Debug, Eq, PartialEq)]
-pub struct FileEntry {
-    pub name: String,
-    pub size: u32,
-}
-
-impl FileEntry {
-    fn parse(input: &str) -> IResult<&str,Self>
+    fn parse_file_entry(input: &str) -> IResult<&str,Self>
     {
-        let filename_parser = alt((parse_filename,parse_alpha_to_string));
+        let filename_parser = alt((Self::parse_filename_with_extensions,parse_alpha_to_string));
         let size_and_name_parser = separated_pair(parse_number, char(' '), filename_parser);
-        map(size_and_name_parser, |(size, name)| Self {name, size})(input)
+        map(size_and_name_parser, |(size, name)| FileSystemEntry::File{name, size})(input)
     }
-}
 
-#[derive(Debug, Eq, PartialEq)]
-pub struct FolderEntry {
-    pub name: String,
-}
+    fn parse_folder_entry(input: &str) -> IResult<&str,Self>
+    {
+        map(preceded(tag("dir "), parse_alpha_to_string), |name| FileSystemEntry::Folder{name})(input)
+    }
 
-impl FolderEntry {
     fn parse(input: &str) -> IResult<&str,Self>
     {
-        map(preceded(tag("dir "), parse_alpha_to_string), |name| Self {name})(input)
+        alt((Self::parse_file_entry,Self::parse_folder_entry))(input)
     }
 }
 
@@ -146,24 +126,24 @@ mod tests {
         assert_eq!(parse_alpha_to_string("test__").unwrap().1, "test");
         assert_eq!(parse_alpha_to_string("test__").unwrap().0, "__");
         assert_eq!(parse_number("15263").unwrap().1, 15263);
-        assert_eq!(parse_filename("test.txt").unwrap().1, "test.txt");
+        assert_eq!(FileSystemEntry::parse_filename_with_extensions("test.txt").unwrap().1, "test.txt");
     }
 
     #[test]
     fn file_entry() {
-        assert_eq!(FileEntry::parse("29116 test").unwrap().1, FileEntry{name: "test".to_owned(), size:  29116});
-        assert_eq!(FileEntry::parse("45 test.txt").unwrap().1, FileEntry{name: "test.txt".to_owned(), size:  45});
+        assert_eq!(FileSystemEntry::parse_file_entry("29116 test").unwrap().1, FileSystemEntry::File{name: "test".to_owned(), size:  29116});
+        assert_eq!(FileSystemEntry::parse_file_entry("45 test.txt").unwrap().1, FileSystemEntry::File{name: "test.txt".to_owned(), size:  45});
     }
 
     #[test]
     fn folder_entry(){
-        assert_eq!(FolderEntry::parse("dir ayygahjvsef").unwrap().1, FolderEntry{name: "ayygahjvsef".to_owned()});
+        assert_eq!(FileSystemEntry::parse_folder_entry("dir ayygahjvsef").unwrap().1, FileSystemEntry::Folder{name: "ayygahjvsef".to_owned()});
     }
 
     #[test]
     fn file_system_entry(){
-        assert_eq!(FileSystemEntry::parse("29116 test").unwrap().1,FileSystemEntry::File(FileEntry{name: "test".to_owned(), size:  29116}));
-        assert_eq!(FileSystemEntry::parse("dir ayygahjvsef").unwrap().1,FileSystemEntry::Folder(FolderEntry{name: "ayygahjvsef".to_owned()}));
+        assert_eq!(FileSystemEntry::parse("29116 test").unwrap().1,FileSystemEntry::File{name: "test".to_owned(), size:  29116});
+        assert_eq!(FileSystemEntry::parse("dir ayygahjvsef").unwrap().1,FileSystemEntry::Folder{name: "ayygahjvsef".to_owned()});
     }
 
     #[test]
@@ -178,8 +158,8 @@ mod tests {
         let input = "$ ls\ndir ayygahjvsef\n62596 h.lst";
         let expected = LSCommand{
             output: vec![
-                FileSystemEntry::Folder(FolderEntry{name: "ayygahjvsef".to_owned()}),
-                FileSystemEntry::File(FileEntry{name: "h.lst".to_owned(), size:  62596}),
+                FileSystemEntry::Folder{name: "ayygahjvsef".to_owned()},
+                FileSystemEntry::File{name: "h.lst".to_owned(), size:  62596},
                 ]
         };
         assert_eq!(LSCommand::parse(input).unwrap().1, expected);
