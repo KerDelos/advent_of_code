@@ -123,7 +123,7 @@ fn traverse_and_get_folder<'a>(path: Vec::<String>, root: &'a mut FileSystemEntr
     return None;
 }
 
-fn traverse_and_get_folder_smaller_than(max_size: i32, root: & FileSystemEntry) -> Option<((String,i32),Vec::<(String,i32)>)>{
+fn traverse_and_filter_folder_by_size(max_size: Option<i32>, root: & FileSystemEntry) -> Option<((String,i32),Vec::<(String,i32)>)>{
     if let FileSystemEntry::Folder { name, children } = root {
         let total_file_size : i32 = children.iter().filter_map(
             |c| 
@@ -132,13 +132,13 @@ fn traverse_and_get_folder_smaller_than(max_size: i32, root: & FileSystemEntry) 
                  _ => None
                 }
             ).sum();
-        let child_folders_info = children.iter().filter_map(|f| traverse_and_get_folder_smaller_than(max_size, f));
+        let child_folders_info = children.iter().filter_map(|f| traverse_and_filter_folder_by_size(max_size, f));
         let mut total_folders_size :i32 = 0;
         let mut small_folders : Vec::<(String,i32)> = Vec::new();
         for mut info in child_folders_info {
             small_folders.append(&mut info.1);
             total_folders_size += info.0.1;
-            if info.0.1 < max_size {
+            if max_size.is_none() || info.0.1 < max_size.unwrap() {
                 small_folders.push(info.0);
             }
         }
@@ -158,7 +158,7 @@ fn main() {
     let mut filesystem_root = FileSystemEntry::Folder{name: "root".to_owned(), children: Vec::new()};
     let mut cwd = Vec::<String>::new();
     for command in shell_output.unwrap().1 {
-        println!("{:?}", command);
+        //println!("{:?}", command);
         match command {
             ShellCommand::CD(cd) => match cd {
                 CDCommand::Root => cwd.clear(),
@@ -180,10 +180,26 @@ fn main() {
     }
 
     //find answer to problem one
-    let res1 = traverse_and_get_folder_smaller_than(100000, &filesystem_root).unwrap().1;
+    let res1 = traverse_and_filter_folder_by_size(Some(100000), &filesystem_root).unwrap().1; //warning, the root will not be in .1 even if it's less than max_size, it's always in .0
     println!("{:?}",res1);
     let sum1 :i32 = res1.iter().map(|(_, size)| size).sum();
     println!("Solution to problem 1 is {}",sum1);
+    assert_eq!(sum1, 1334506);
+
+    //find answer to problem two
+    const DISK_SIZE :i32 = 70000000;
+    const UPDATE_SIZE : i32 = 30000000;
+    let res2 = traverse_and_filter_folder_by_size(None, &filesystem_root).unwrap();
+    let current_used_size = res2.0.1;
+    let size_to_reclaim = current_used_size - (DISK_SIZE - UPDATE_SIZE);
+    println!("We need to reclaim at least {} unit on the disk", size_to_reclaim);
+    let mut every_folder_size = res2.1.clone();
+    every_folder_size.extend([res2.0]);
+    every_folder_size.sort_by(|(_, left_size), (_,right_size)| left_size.partial_cmp(right_size).unwrap());
+    let folder_to_delete = every_folder_size.iter().find(|(_,size)| *size >= size_to_reclaim).unwrap();
+    println!("We can delete folder \"{}\" and reclaim {} units",folder_to_delete.0, folder_to_delete.1);
+    assert_eq!(folder_to_delete.1, 7421137);
+
 }
 
 //TODO didn't manage to have a "parent" ref for each folder and also having cwd as a ref to a folder
