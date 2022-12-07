@@ -7,10 +7,10 @@ use nom::{
     branch::alt,
     multi::separated_list1,
 };
-use std::{str::FromStr, fmt::Error};
+use std::{str::FromStr, fmt::Error, cell::RefCell, iter::Cloned, fs::File, vec};
 
-pub fn parse_number(input: &str) -> IResult<&str, u32> {
-    map_res(digit1, u32::from_str)(input)
+pub fn parse_number(input: &str) -> IResult<&str, i32> {
+    map_res(digit1, i32::from_str)(input)
 }
 
 pub fn parse_alpha_to_string(input: &str) -> IResult<&str, String>
@@ -20,8 +20,8 @@ pub fn parse_alpha_to_string(input: &str) -> IResult<&str, String>
 
 #[derive(Debug, Eq, PartialEq)]
 pub enum FileSystemEntry{
-    File { name: String, size: u32},
-    Folder { name: String, /*parent: Option<&FileSystemEntry>, children: Vec<FileSystemEntry>*/}
+    File { name: String, size: i32},
+    Folder { name: String, children: Vec<FileSystemEntry>}
 }
 
 impl FileSystemEntry{
@@ -42,7 +42,7 @@ impl FileSystemEntry{
 
     fn parse_folder_entry(input: &str) -> IResult<&str,Self>
     {
-        map(preceded(tag("dir "), parse_alpha_to_string), |name| FileSystemEntry::Folder{name})(input)
+        map(preceded(tag("dir "), parse_alpha_to_string), |name| FileSystemEntry::Folder{name, children: Vec::new()})(input)
     }
 
     fn parse(input: &str) -> IResult<&str,Self>
@@ -105,16 +105,107 @@ impl ShellCommand{
     }
 }
 
+fn traverse_and_get_folder<'a>(path: Vec::<String>, root: &'a mut FileSystemEntry) -> Option<&'a mut FileSystemEntry>{
+    if path.is_empty() {
+        return Some(root);
+    }
+    let next_folder = &path[0];
+    let remaining_path : Vec<String> = Vec::from_iter(path[1..].iter().cloned());
+    if let FileSystemEntry::Folder { children, .. } = root {
+        for child in children {
+            if let FileSystemEntry::Folder { name, ..} = child {
+                if name.as_str() == next_folder {
+                    return traverse_and_get_folder(remaining_path, child);
+                }
+            }
+        }
+    }
+    return None;
+}
+
+fn traverse_and_get_folder_smaller_than(max_size: i32, root: & FileSystemEntry) -> Option<((String,i32),Vec::<(String,i32)>)>{
+    if let FileSystemEntry::Folder { name, children } = root {
+        let total_file_size : i32 = children.iter().filter_map(
+            |c| 
+            match c { 
+                FileSystemEntry::File {size, .. } => Some(*size),
+                 _ => None
+                }
+            ).sum();
+        let child_folders_info = children.iter().filter_map(|f| traverse_and_get_folder_smaller_than(max_size, f));
+        let mut total_folders_size :i32 = 0;
+        let mut small_folders : Vec::<(String,i32)> = Vec::new();
+        for mut info in child_folders_info {
+            small_folders.append(&mut info.1);
+            total_folders_size += info.0.1;
+            if info.0.1 < max_size {
+                small_folders.push(info.0);
+            }
+        }
+        return Some(((name.clone(), total_file_size+total_folders_size),small_folders))
+    }
+    None
+}
+
 fn main() {
-    let content = std::fs::read_to_string("src/input_0.txt").expect("can't read file");
+    let content = std::fs::read_to_string("src/input_1.txt").expect("can't read file");
 
     let mut parse_shell_output = separated_list1(line_ending,ShellCommand::parse);
 
     let shell_output = parse_shell_output(&content[..]);
 
-    println!("{:?}", shell_output.unwrap().1);
+    //construct filesystem
+    let mut filesystem_root = FileSystemEntry::Folder{name: "root".to_owned(), children: Vec::new()};
+    let mut cwd = Vec::<String>::new();
+    for command in shell_output.unwrap().1 {
+        println!("{:?}", command);
+        match command {
+            ShellCommand::CD(cd) => match cd {
+                CDCommand::Root => cwd.clear(),
+                CDCommand::Up => _ = cwd.pop(),
+                CDCommand::Folder(folder_name) => cwd.push(folder_name.clone()),
+            },
+            ShellCommand::LS(LSCommand { output }) => {
+                let mut folder = traverse_and_get_folder(cwd.clone(), &mut filesystem_root).expect("folder doesn't exist");
+                for mut entry in output{
+                    if let FileSystemEntry::Folder{children,..} = folder{
+                        children.push(entry)
+                    }
+                    else{
+                        panic!("this should be a folder");
+                    }
+                }
+            },
+        }
+    }
 
+    //find answer to problem one
+    let res1 = traverse_and_get_folder_smaller_than(100000, &filesystem_root).unwrap().1;
+    println!("{:?}",res1);
+    let sum1 :i32 = res1.iter().map(|(_, size)| size).sum();
+    println!("Solution to problem 1 is {}",sum1);
 }
+
+//TODO didn't manage to have a "parent" ref for each folder and also having cwd as a ref to a folder
+//this would have avoided goind through the entire filesystem for each ls command
+
+//TODO didn't manage to make an equivalent to traverse_and_get_folder without using recursivity
+// fn get_folder<'a>(path: Vec::<&str>, filesystem: &'a mut FileSystemEntry) -> &'a mut FileSystemEntry{
+//     let mut cwd = filesystem; 
+//     for step in path {
+//         if let FileSystemEntry::Folder {children, ..} = cwd {
+//             for child in children {
+//                 if let FileSystemEntry::Folder { name, ..} = child {
+//                     if name.as_str() == step {
+//                         cwd = child;
+//                     }
+//                 }
+//             }
+//         }
+//     }
+//     return cwd;
+// }
+
 
 #[cfg(test)]
 mod tests {
@@ -137,13 +228,13 @@ mod tests {
 
     #[test]
     fn folder_entry(){
-        assert_eq!(FileSystemEntry::parse_folder_entry("dir ayygahjvsef").unwrap().1, FileSystemEntry::Folder{name: "ayygahjvsef".to_owned()});
+        assert_eq!(FileSystemEntry::parse_folder_entry("dir ayygahjvsef").unwrap().1, FileSystemEntry::Folder{name: "ayygahjvsef".to_owned(), children: Vec::new()});
     }
 
     #[test]
     fn file_system_entry(){
         assert_eq!(FileSystemEntry::parse("29116 test").unwrap().1,FileSystemEntry::File{name: "test".to_owned(), size:  29116});
-        assert_eq!(FileSystemEntry::parse("dir ayygahjvsef").unwrap().1,FileSystemEntry::Folder{name: "ayygahjvsef".to_owned()});
+        assert_eq!(FileSystemEntry::parse("dir ayygahjvsef").unwrap().1,FileSystemEntry::Folder{name: "ayygahjvsef".to_owned(), children: Vec::new()});
     }
 
     #[test]
@@ -158,7 +249,7 @@ mod tests {
         let input = "$ ls\ndir ayygahjvsef\n62596 h.lst";
         let expected = LSCommand{
             output: vec![
-                FileSystemEntry::Folder{name: "ayygahjvsef".to_owned()},
+                FileSystemEntry::Folder{name: "ayygahjvsef".to_owned(), children: Vec::new()},
                 FileSystemEntry::File{name: "h.lst".to_owned(), size:  62596},
                 ]
         };
