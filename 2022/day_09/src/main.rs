@@ -12,6 +12,13 @@ fn tail_knot(front :Pos, back:Pos) -> Pos {
     return (back.0 + delta.0, back.1 + delta.1);
 }
 
+fn move_rope(rope: &mut Vec<Pos>, dir: Dir){
+    rope[0] = dir(rope[0]);
+    for i in 1..rope.len(){
+        rope[i] = tail_knot(rope[i-1], rope[i]);
+    }
+}
+
 fn main() {
     let content = std::fs::read_to_string("src/input_1.txt").expect("can't read file");
 
@@ -29,20 +36,31 @@ fn main() {
             _ => None,
     });
 
-    let mut head_pos = (0,0);
-    let mut tail_pos = (0,0);
-    let mut visited :HashSet<Pos> = HashSet::new();
-    visited.insert(tail_pos);
-    for (dir,length) in instructions{
+    let mut small_rope :Vec<Pos>= vec![(0,0); 2];
+    let mut visited_by_small_rope :HashSet<Pos> = HashSet::new();
+    visited_by_small_rope.insert((0,0));
+    for (dir,length) in instructions.clone(){
         for _ in 0..length{
-            head_pos = dir(head_pos);
-            tail_pos = tail_knot(head_pos, tail_pos);
-            visited.insert(tail_pos);
+            move_rope(&mut small_rope, dir);
+            visited_by_small_rope.insert(small_rope.last().unwrap().clone());
         }
 
         //println!("{:?} {}", dir, length);
         //println!("h: {:?}; t:{:?}", head_pos, tail_pos);
     }
 
-    println!("The tail visited {} positions.", visited.len());
+    println!("The small rope tail visited {} positions.", visited_by_small_rope.len());
+    //assert_eq!(visited.len(), 6037);
+
+    let mut large_rope :Vec<Pos>= vec![(0,0); 10];
+    let mut visited_by_large_rope :HashSet<Pos> = HashSet::new();
+    visited_by_large_rope.insert((0,0));
+    for (dir,length) in instructions{
+        for _ in 0..length{
+            move_rope(&mut large_rope, dir);
+            visited_by_large_rope.insert(large_rope.last().unwrap().clone());
+        }
+    }
+
+    println!("The large rope tail visited {} positions.", visited_by_large_rope.len());
 }
