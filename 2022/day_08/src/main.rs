@@ -13,13 +13,21 @@ fn from_2d_to_1d(pos: Pos, size: usize) -> Option<usize>
     return Some(usize::try_from(pos.0 + pos.1 * size).unwrap());
 }
 
+fn from_1d_to_2d(pos: usize, size:usize) -> Option<(i32,i32)>{
+    if pos > size * size {
+        return None;
+    }
+    let y = i32::try_from(pos / size).unwrap();
+    let x = i32::try_from(pos).unwrap() - y * i32::try_from(size).unwrap();
+    return Some((x,y));
+}
+
 fn get_tree(pos: Pos, forest: &Vec<u32>, size: usize) -> Option<u32>{
     if let Some(idx) = from_2d_to_1d(pos, size){
         return Some(forest[idx]);
     }
     return None;
 }
-
 
 fn compute_visibility(direction: Dir, starting_positions : Vec<Pos>, forest: &Vec<u32>, size: usize, visibilities: &mut Vec<bool>)
 {
@@ -41,20 +49,18 @@ fn compute_visibility(direction: Dir, starting_positions : Vec<Pos>, forest: &Ve
     }
 }
 
-fn compute_scenic_score(posisition: Pos, directions: Vec<Dir>, forest: &Vec<u32>, size: usize) -> i32{
+fn compute_scenic_score(posisition: Pos, directions: &Vec<Dir>, forest: &Vec<u32>, size: usize) -> i32{
     let tree_height = get_tree(posisition, forest, size).unwrap();
     let mut score = 1;
-    let mut pos = posisition;
     for d in directions{
+        let mut pos = posisition;
         let mut nb_trees = 0;
         loop{
             pos = d(pos);
             match get_tree(pos, forest, size){
                 Some(other_tree_height) => {
-                    if tree_height > other_tree_height {
-                        nb_trees += 1;
-                    }
-                    else {
+                    nb_trees += 1;
+                    if tree_height <= other_tree_height {
                         break;
                     }
                 }
@@ -83,7 +89,6 @@ fn main() {
     let west_edge :Vec<(i32,i32)> = (0..forest_size).step_by(1).map(|idx| (0, i32::try_from(idx).unwrap())).collect();
     let east_edge :Vec<(i32,i32)> = (0..forest_size).step_by(1).map(|idx| (i32::try_from(forest_size).unwrap()-1, i32::try_from(idx).unwrap())).collect();
 
-
     println!("The forest size is {}",forest_size);
     let mut visibilities = vec![false; forest.len()];
     compute_visibility(south, north_edge, &forest, forest_size, &mut visibilities);
@@ -93,28 +98,18 @@ fn main() {
     let nb_trees = visibilities.iter().filter(|v| **v).count();
     println!("From the edges of the forest, you can see {:?} trees", nb_trees);
 
-    println!("Scenic score of tree in tuto is {}",compute_scenic_score((2,3),));
-
+    let res = forest.iter().enumerate().map(|(i,_)| compute_scenic_score(from_1d_to_2d(i, forest_size).unwrap(), &all_dirs, &forest, forest_size)).max().unwrap();
+    println!("max scenic score found is {}", res);
 }
 
-
-// fn print_vec_in_2d<T: std::fmt::Display>(vector: &Vec<T>, size: usize)
-// {
-//     for y in 0..size{
-//         for x in 0..size{
-//             let pos = (i32::try_from(x).unwrap(),i32::try_from(y).unwrap());
-//             print!("{} ",vector[from_2d_to_1d(pos,size).unwrap()]);
-//         }
-//         println!("");
-//     }
-// }
-
-
-// fn from_1d_to_2d(pos: usize, size:usize) -> Option<(i32,i32)>{
-//     if pos > size * size {
-//         return None;
-//     }
-//     let y = i32::try_from(pos / size).unwrap();
-//     let x = i32::try_from(pos).unwrap() - y;
-//     return Some((x,y));
-// }
+#[allow(dead_code)]
+fn print_vec_in_2d<T: std::fmt::Display>(vector: &Vec<T>, size: usize)
+{
+    for y in 0..size{
+        for x in 0..size{
+            let pos = (i32::try_from(x).unwrap(),i32::try_from(y).unwrap());
+            print!("{} ",vector[from_2d_to_1d(pos,size).unwrap()]);
+        }
+        println!("");
+    }
+}
