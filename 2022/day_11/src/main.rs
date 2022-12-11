@@ -7,11 +7,11 @@ use nom::{
     branch::alt,
     multi::separated_list1, error::Error,
 };
-use std::str::FromStr;
+use std::{str::FromStr, cell::RefCell, borrow::Borrow};
 
 //TODO try templating these functions !
-pub fn parse_number(input: &str) -> IResult<&str, i32> {
-    map_res(digit1, i32::from_str)(input)
+pub fn parse_number(input: &str) -> IResult<&str, i64> {
+    map_res(digit1, i64::from_str)(input)
 }
 
 pub fn parse_usize(input: &str) -> IResult<&str, usize> {
@@ -20,7 +20,7 @@ pub fn parse_usize(input: &str) -> IResult<&str, usize> {
 
 #[derive(Debug, Eq, PartialEq)]
 pub struct Test{
-    divider : i32,
+    divider : i64,
     monkey_true: usize,   
     monkey_false: usize,
 }
@@ -33,6 +33,12 @@ impl Test{
         map(tuple((divider,monkey_true,monkey_false)),
          |(div, mt, mf)| Test{divider: div, monkey_false: mf, monkey_true:mt})(input)
     }
+    fn compute(&self, input: i64) -> usize{
+        if input % self.divider == 0 {
+            return self.monkey_true;
+        }
+        return self.monkey_false;
+    }
 }
 #[derive(Debug, Eq, PartialEq)]
 enum Operator{
@@ -43,7 +49,7 @@ enum Operator{
 #[derive(Debug, Eq, PartialEq)]
 enum Operand{
     Old,
-    Nb(i32),
+    Nb(i64),
 }
 #[derive(Debug, Eq, PartialEq)]
 struct Operation{
@@ -67,11 +73,22 @@ impl Operation{
         let parser = delimited(pair(space1,tag("Operation: new = old ")), computation, line_ending);
         map(parser, |(otor, oand)| Operation{operator: otor, operand: oand })(input)
     }
+
+    fn compute(&self, input: i64) -> i64{
+        let other = match self.operand {
+            Operand::Old => input,
+            Operand::Nb(n) => n,
+        };
+        match self.operator {
+            Operator::Mult => input * other,
+            Operator::Add => input + other,
+        }
+    }
 }
 
 #[derive(Debug, Eq, PartialEq)]
 struct Monkey{
-    items : Vec<i32>,
+    items : Vec<i64>,
     op : Operation,
     test : Test,
 }
@@ -86,13 +103,37 @@ impl Monkey{
 
 
 fn main() {
-    let content = std::fs::read_to_string("src/input_0.txt").unwrap();
+    let content = std::fs::read_to_string("src/input_1.txt").unwrap();
 
-    let monkeys = separated_list1(multispace1, Monkey::parse)(&content).unwrap().1;
-
-    for m in monkeys{
-        dbg!(m);
+    let mut monkeys :Vec<RefCell<Monkey>> = Vec::new();
+    for m in separated_list1(multispace1, Monkey::parse)(&content).unwrap().1
+    {
+        monkeys.push(RefCell::new(m));
     }
+
+    let mut monkey_examinations : Vec<i32> = vec![0; monkeys.len()];
+    
+    for i in 0..20{
+        println!("Round {}", i+1);
+        for (i,m) in monkeys.iter().enumerate(){
+            for it in &m.borrow().items{
+                monkey_examinations[i] += 1;
+                let new_worry_level = m.borrow().op.compute(*it) / 3;
+                let new_monkey = m.borrow().test.compute(new_worry_level);
+                monkeys[new_monkey].borrow_mut().items.push(new_worry_level);
+                //println!("Monkey {} examined {} and passes {} to {} who now has {:?}",i,*it, new_worry_level, new_monkey, monkeys[new_monkey].borrow().items);
+            }
+            m.borrow_mut().items.clear();
+        }
+        println!("After round {} --------------------------", i+1);
+        for (i,m) in monkeys.iter().enumerate(){
+            println!("Monkey {} is holding {:?}", i, m.borrow().items);
+        }
+    }
+
+    monkey_examinations.sort();
+    monkey_examinations.reverse();
+    println!("Monkey business level is {}", monkey_examinations[0..2].iter().product::<i32>())
 }
 
 
