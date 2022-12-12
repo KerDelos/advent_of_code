@@ -20,7 +20,7 @@ Monkey 2:
     If false: throw to monkey 7
 
 Monkey 3:
-  Starting items: 97, 9
+  Starting items: 97, 91
   Operation: new = old + 1
   Test: divisible by 17
     If true: throw to monkey 6
