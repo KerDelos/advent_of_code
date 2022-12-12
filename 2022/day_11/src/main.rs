@@ -18,7 +18,7 @@ pub fn parse_usize(input: &str) -> IResult<&str, usize> {
     map_res(digit1, usize::from_str)(input)
 }
 
-#[derive(Debug, Eq, PartialEq)]
+#[derive(Debug, Eq, PartialEq, Clone)]
 pub struct Test{
     divider : i64,
     monkey_true: usize,   
@@ -40,18 +40,18 @@ impl Test{
         return self.monkey_false;
     }
 }
-#[derive(Debug, Eq, PartialEq)]
+#[derive(Debug, Eq, PartialEq, Clone)]
 enum Operator{
     Mult,
     Add,
 }
 
-#[derive(Debug, Eq, PartialEq)]
+#[derive(Debug, Eq, PartialEq, Clone)]
 enum Operand{
     Old,
     Nb(i64),
 }
-#[derive(Debug, Eq, PartialEq)]
+#[derive(Debug, Eq, PartialEq, Clone)]
 struct Operation{
     operator: Operator,
     operand: Operand,
@@ -86,7 +86,7 @@ impl Operation{
     }
 }
 
-#[derive(Debug, Eq, PartialEq)]
+#[derive(Debug, Eq, PartialEq, Clone)]
 struct Monkey{
     items : Vec<i64>,
     op : Operation,
@@ -101,6 +101,23 @@ impl Monkey{
     }
 }
 
+fn compute_monkey_business(monkeys: Vec<RefCell<Monkey>>, nb_round: i32, additional_op :&dyn Fn(i64) -> i64) -> i64{
+    let mut monkey_examinations : Vec<i64> = vec![0; monkeys.len()];
+    for i in 0..nb_round{
+        for (i,m) in monkeys.iter().enumerate(){
+            for it in &m.borrow().items{
+                monkey_examinations[i] += 1;
+                let new_worry_level = additional_op(m.borrow().op.compute(*it));
+                let new_monkey = m.borrow().test.compute(new_worry_level);
+                monkeys[new_monkey].borrow_mut().items.push(new_worry_level);
+            }
+            m.borrow_mut().items.clear();
+        }
+    }
+    monkey_examinations.sort();
+    monkey_examinations.reverse();
+    return monkey_examinations[0..2].iter().product::<i64>();
+}
 
 fn main() {
     let content = std::fs::read_to_string("src/input_1.txt").unwrap();
@@ -111,29 +128,13 @@ fn main() {
         monkeys.push(RefCell::new(m));
     }
 
-    let mut monkey_examinations : Vec<i32> = vec![0; monkeys.len()];
-    
-    for i in 0..20{
-        println!("Round {}", i+1);
-        for (i,m) in monkeys.iter().enumerate(){
-            for it in &m.borrow().items{
-                monkey_examinations[i] += 1;
-                let new_worry_level = m.borrow().op.compute(*it) / 3;
-                let new_monkey = m.borrow().test.compute(new_worry_level);
-                monkeys[new_monkey].borrow_mut().items.push(new_worry_level);
-                //println!("Monkey {} examined {} and passes {} to {} who now has {:?}",i,*it, new_worry_level, new_monkey, monkeys[new_monkey].borrow().items);
-            }
-            m.borrow_mut().items.clear();
-        }
-        println!("After round {} --------------------------", i+1);
-        for (i,m) in monkeys.iter().enumerate(){
-            println!("Monkey {} is holding {:?}", i, m.borrow().items);
-        }
-    }
+    let denominator: i64 = monkeys.iter().map(|m| m.borrow().test.divider).product();
+    println!("denominator is {}", denominator);
 
-    monkey_examinations.sort();
-    monkey_examinations.reverse();
-    println!("Monkey business level is {}", monkey_examinations[0..2].iter().product::<i32>())
+    let monkeys_clone = monkeys.iter().map(|m| RefCell::new(m.borrow().clone())).collect::<Vec<_>>();
+
+    println!("Monkey business level is {}", compute_monkey_business(monkeys_clone, 20, &|x| x /3));
+    println!("Monkey business level is {}", compute_monkey_business(monkeys, 10000, &|x| x % denominator));
 }
 
 
